@@ -162,7 +162,8 @@ namespace htmltoc
                 int total_size = 0;
                 while((line = tr.ReadLine()) != null)
                 {
-                    string str = line.Trim();
+                    byte[] bytes = Encoding.Default.GetBytes(line.Trim());
+                    string str = Encoding.ASCII.GetString(bytes);
                     str = str.Replace("\"", "\\\"");
                     //str = str.Replace("\\", "\\\\");
                     total_size += str.Length;
