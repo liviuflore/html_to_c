@@ -22,19 +22,42 @@ namespace htmltoc
                 Usage();
                 return;
             }
+
             string source = args[0];
             string destination = args[0];
             if (args.Count() == 2)
                 destination = args[1];
 
-            string[] files = Directory.GetFiles(source, "*.html", SearchOption.AllDirectories);
-
+            string[] files = GetFiles(source, "*.html|*.css|*.png", SearchOption.AllDirectories);
             foreach (string file in files)
             {
-                Console.WriteLine("Convert: " + file);
-                ConvertFile(file, destination);
+                if (Path.GetExtension(file) == ".png")
+                {
+                    Console.WriteLine("Convert binary file: " + file);
+                    ConvertBinFile(file, destination);
+                }
+                else
+                {
+                    Console.WriteLine("Convert text file: " + file);
+                    ConvertTextFile(file, destination);
+                }
             }
 
+            WriteWebpages(files, destination);
+        }
+
+        private static string[] GetFiles(string path, string searchPattern, SearchOption searchOption)
+        {
+            string[] searchPatterns = searchPattern.Split('|');
+            List<string> files = new List<string>();
+            foreach (string sp in searchPatterns)
+                files.AddRange(System.IO.Directory.GetFiles(path, sp, searchOption));
+            files.Sort();
+            return files.ToArray();
+        }
+
+        private static void WriteWebpages(string[] files, string destination)
+        {
             // webpages.h
             using (TextWriter tw = new StreamWriter(destination + "\\webpages.h"))
             {
@@ -125,7 +148,7 @@ namespace htmltoc
             }
         }
 
-        private static void ConvertFile(string file, string destination)
+        private static void ConvertTextFile(string file, string destination)
         {
             try
             {
@@ -140,9 +163,59 @@ namespace htmltoc
                 while((line = tr.ReadLine()) != null)
                 {
                     string str = line.Trim();
+                    str = str.Replace("\"", "\\\"");
+                    str = str.Replace("\\", "\\\\");
                     total_size += str.Length;
                     tw.WriteLine();
                     tw.Write("\t\"" + str + "\"");
+                }
+                tw.WriteLine(";");
+                tw.WriteLine("const int www_" + Path.GetFileName(file).Replace('.', '_') + "_length = " + total_size + ";");
+                tw.Close();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("exception while converting file: " + file);
+                Console.WriteLine("\t" + ex.Message);
+            }
+        }
+
+        private static void ConvertBinFile(string file, string destination)
+        {
+            try
+            {
+                string destination_file = destination + "\\" + Path.GetFileName(file).Replace('.', '_') + ".c";
+                Directory.CreateDirectory(destination);
+                BinaryReader br = new BinaryReader(File.Open(file, FileMode.Open));
+                TextWriter tw = new StreamWriter(destination_file);
+
+                tw.WriteLine("const char www_" + Path.GetFileName(file).Replace('.', '_') + "_array[] = ");
+                byte b;
+                int total_size = 0;
+                int line_size = 0;
+                tw.Write("\t\"");
+                try
+                {
+                    while (true)
+                    {
+                        b = br.ReadByte();
+                        if (line_size == 32)
+                        {
+                            tw.WriteLine("\"");
+                            tw.Write("\t\"");
+                            line_size = 0;
+                        }
+                        string str = "\\0x" + String.Format("{0,0:x2}", b);
+                        total_size += str.Length;
+                        line_size++;
+
+                        tw.Write(str);
+                    }
+                }
+                catch (EndOfStreamException) { };
+                if (total_size == 0 || line_size != 0)
+                {
+                    tw.Write("\"");
                 }
                 tw.WriteLine(";");
                 tw.WriteLine("const int www_" + Path.GetFileName(file).Replace('.', '_') + "_length = " + total_size + ";");
