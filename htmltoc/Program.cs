@@ -164,7 +164,7 @@ namespace htmltoc
                 {
                     string str = line.Trim();
                     str = str.Replace("\"", "\\\"");
-                    str = str.Replace("\\", "\\\\");
+                    //str = str.Replace("\\", "\\\\");
                     total_size += str.Length;
                     tw.WriteLine();
                     tw.Write("\t\"" + str + "\"");
