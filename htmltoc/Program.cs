@@ -162,13 +162,13 @@ namespace htmltoc
                 int total_size = 0;
                 while((line = tr.ReadLine()) != null)
                 {
-                    byte[] bytes = Encoding.Default.GetBytes(line.Trim());
+                    byte[] bytes = Encoding.Default.GetBytes(line);
                     string str = Encoding.ASCII.GetString(bytes);
                     str = str.Replace("\"", "\\\"");
                     //str = str.Replace("\\", "\\\\");
                     total_size += str.Length;
                     tw.WriteLine();
-                    tw.Write("\t\"" + str + "\"");
+                    tw.Write("\t\"" + str + "\\n\"");
                 }
                 tw.WriteLine(";");
                 tw.WriteLine("const int www_" + Path.GetFileName(file).Replace('.', '_') + "_length = " + total_size + ";");
