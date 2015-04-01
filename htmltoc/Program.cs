@@ -190,11 +190,11 @@ namespace htmltoc
                 BinaryReader br = new BinaryReader(File.Open(file, FileMode.Open));
                 TextWriter tw = new StreamWriter(destination_file);
 
-                tw.WriteLine("const char www_" + Path.GetFileName(file).Replace('.', '_') + "_array[] = ");
+                tw.WriteLine("const char www_" + Path.GetFileName(file).Replace('.', '_') + "_array[] = {");
                 byte b;
                 int total_size = 0;
                 int line_size = 0;
-                tw.Write("\t\"");
+                tw.Write("\t");
                 try
                 {
                     while (true)
@@ -202,23 +202,19 @@ namespace htmltoc
                         b = br.ReadByte();
                         if (line_size == 32)
                         {
-                            tw.WriteLine("\"");
-                            tw.Write("\t\"");
+                            tw.WriteLine();
+                            tw.Write("\t");
                             line_size = 0;
                         }
-                        string str = "\\0x" + String.Format("{0,0:x2}", b);
-                        total_size += str.Length;
+                        string str = "0x" + String.Format("{0,0:x2}", b) + ", ";
+                        total_size++;
                         line_size++;
 
                         tw.Write(str);
                     }
                 }
                 catch (EndOfStreamException) { };
-                if (total_size == 0 || line_size != 0)
-                {
-                    tw.Write("\"");
-                }
-                tw.WriteLine(";");
+                tw.WriteLine("};");
                 tw.WriteLine("const int www_" + Path.GetFileName(file).Replace('.', '_') + "_length = " + total_size + ";");
                 tw.Close();
             }
