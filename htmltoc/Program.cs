@@ -31,16 +31,7 @@ namespace htmltoc
             string[] files = GetFiles(source, "*.html|*.css|*.png", SearchOption.AllDirectories);
             foreach (string file in files)
             {
-                if (Path.GetExtension(file) == ".png")
-                {
-                    Console.WriteLine("Convert binary file: " + file);
-                    ConvertBinFile(file, destination);
-                }
-                else
-                {
-                    Console.WriteLine("Convert text file: " + file);
-                    ConvertTextFile(file, destination);
-                }
+                ConvertFile(file, destination);
             }
 
             WriteWebpages(files, destination);
@@ -148,74 +139,48 @@ namespace htmltoc
             }
         }
 
-        private static void ConvertTextFile(string file, string destination)
+        private static string GetFileHeader(string file)
         {
-            try
-            {
-                string destination_file = destination + "\\" + Path.GetFileName(file).Replace('.','_') + ".c";
-                Directory.CreateDirectory(destination);
-                TextReader tr = new StreamReader(file);
-                TextWriter tw = new StreamWriter(destination_file);
-
-                tw.Write("const char www_" + Path.GetFileName(file).Replace('.', '_') + "_array[] = ");
-                string line;
-                int total_size = 0;
-                while((line = tr.ReadLine()) != null)
-                {
-                    byte[] bytes = Encoding.Default.GetBytes(line);
-                    string str = Encoding.ASCII.GetString(bytes);
-                    str = str.Replace("\"", "\\\"");
-                    //str = str.Replace("\\", "\\\\");
-                    total_size += str.Length;
-                    tw.WriteLine();
-                    tw.Write("\t\"" + str + "\\n\"");
-                }
-                tw.WriteLine(";");
-                tw.WriteLine("const int www_" + Path.GetFileName(file).Replace('.', '_') + "_length = " + total_size + ";");
-                tw.Close();
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("exception while converting file: " + file);
-                Console.WriteLine("\t" + ex.Message);
-            }
+            if (Path.GetExtension(file) == ".html")
+                return "\"HTTP/1.1 200 OK\\r\\nContent-type: text/html\\r\\n\\r\\n\"";
+            else if (Path.GetExtension(file) == ".css")
+                return "\"HTTP/1.1 200 OK\\r\\nContent-type: text/css\\r\\n\\r\\n\"";
+            else if (Path.GetExtension(file) == ".png")
+                return "HTTP/1.1 200 OK\r\nContent-type: image/png\r\n\r\n";
+            else
+                return "";
         }
 
-        private static void ConvertBinFile(string file, string destination)
+        private static int GetFile(string file, List<string> output)
+        {
+            if (Path.GetExtension(file) == ".html")
+                return GetTxtFile(file, output);
+            else if (Path.GetExtension(file) == ".css")
+                return GetTxtFile(file, output);
+            else if (Path.GetExtension(file) == ".png")
+                return GetBinFile(file, output);
+            else
+                return 0;
+        }
+
+        private static void ConvertFile(string file, string destination)
         {
             try
             {
                 string destination_file = destination + "\\" + Path.GetFileName(file).Replace('.', '_') + ".c";
                 Directory.CreateDirectory(destination);
-                BinaryReader br = new BinaryReader(File.Open(file, FileMode.Open));
                 TextWriter tw = new StreamWriter(destination_file);
+                List<string> file_content = new List<string>();
+                int size = 0;
 
-                tw.WriteLine("const char www_" + Path.GetFileName(file).Replace('.', '_') + "_array[] = {");
-                byte b;
-                int total_size = 0;
-                int line_size = 0;
-                tw.Write("\t");
-                try
+                tw.Write("const char www_" + Path.GetFileName(file).Replace('.', '_') + "_array[] = ");
+                size = GetFile(file, file_content);
+                foreach (string line in file_content)
                 {
-                    while (true)
-                    {
-                        b = br.ReadByte();
-                        if (line_size == 32)
-                        {
-                            tw.WriteLine();
-                            tw.Write("\t");
-                            line_size = 0;
-                        }
-                        string str = "0x" + String.Format("{0,0:x2}", b) + ", ";
-                        total_size++;
-                        line_size++;
-
-                        tw.Write(str);
-                    }
+                    tw.WriteLine(line);
                 }
-                catch (EndOfStreamException) { };
-                tw.WriteLine("};");
-                tw.WriteLine("const int www_" + Path.GetFileName(file).Replace('.', '_') + "_length = " + total_size + ";");
+                tw.WriteLine(";");
+                tw.WriteLine("const int www_" + Path.GetFileName(file).Replace('.', '_') + "_length = " + size + ";");
                 tw.Close();
             }
             catch (Exception ex)
@@ -224,5 +189,142 @@ namespace htmltoc
                 Console.WriteLine("\t" + ex.Message);
             }
         }
+
+
+        private static int GetTxtFile(string file, List<string> output)
+        {
+            int total_size = 0;
+            string header = GetFileHeader(file);
+            output.Add(header);
+            total_size += header.Length - 7;
+
+            TextReader tr = new StreamReader(file);
+            string line;
+            while ((line = tr.ReadLine()) != null)
+            {
+                byte[] bytes = Encoding.Default.GetBytes(line);
+                string str = Encoding.ASCII.GetString(bytes);
+                str = str.Replace("\"", "\\\"");
+                total_size += str.Length - str.Count(x => x == '\"') + 1;
+                output.Add("\t\"" + str + "\\n\"");
+            }
+            return total_size;
+        }
+
+        private static int GetBinFile(string file, List<string> output)
+        {
+            BinaryReader br = new BinaryReader(File.Open(file, FileMode.Open));
+            string header = GetFileHeader(file);
+            int i;
+            byte b;
+            int total_size = 0;
+            int line_size = 0;
+            string str = "";
+            output.Add("{");
+            for (i = 0; i < header.Length; i++)
+            {
+                b = (byte)header[i];
+                str += "0x" + String.Format("{0,0:x2}", b) + ", ";
+                total_size++;
+            }
+            output.Add("\t" + str);
+            str = "";
+            try
+            {
+                while (true)
+                {
+                    b = br.ReadByte();
+                    if (line_size == 32)
+                    {
+                        line_size = 0;
+                        output.Add("\t" + str);
+                        str = "";
+                    }
+                    str += "0x" + String.Format("{0,0:x2}", b) + ", ";
+                    total_size++;
+                    line_size++;
+                }
+            }
+            catch (EndOfStreamException) { };
+            output.Add("}");
+            return total_size;
+        }
+
+        //private static void ConvertTextFile(string file, string destination)
+        //{
+        //    try
+        //    {
+        //        string destination_file = destination + "\\" + Path.GetFileName(file).Replace('.','_') + ".c";
+        //        Directory.CreateDirectory(destination);
+        //        TextReader tr = new StreamReader(file);
+        //        TextWriter tw = new StreamWriter(destination_file);
+
+        //        tw.Write("const char www_" + Path.GetFileName(file).Replace('.', '_') + "_array[] = ");
+        //        string line;
+        //        int total_size = 0;
+        //        while((line = tr.ReadLine()) != null)
+        //        {
+        //            byte[] bytes = Encoding.Default.GetBytes(line);
+        //            string str = Encoding.ASCII.GetString(bytes);
+        //            str = str.Replace("\"", "\\\"");
+        //            //str = str.Replace("\\", "\\\\");
+        //            total_size += str.Length;
+        //            tw.WriteLine();
+        //            tw.Write("\t\"" + str + "\\n\"");
+        //        }
+        //        tw.WriteLine(";");
+        //        tw.WriteLine("const int www_" + Path.GetFileName(file).Replace('.', '_') + "_length = " + total_size + ";");
+        //        tw.Close();
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        Console.WriteLine("exception while converting file: " + file);
+        //        Console.WriteLine("\t" + ex.Message);
+        //    }
+        //}
+
+        //private static void ConvertBinFile(string file, string destination)
+        //{
+        //    try
+        //    {
+        //        string destination_file = destination + "\\" + Path.GetFileName(file).Replace('.', '_') + ".c";
+        //        Directory.CreateDirectory(destination);
+        //        BinaryReader br = new BinaryReader(File.Open(file, FileMode.Open));
+        //        TextWriter tw = new StreamWriter(destination_file);
+
+        //        tw.WriteLine("const char www_" + Path.GetFileName(file).Replace('.', '_') + "_array[] = {");
+        //        byte b;
+        //        int total_size = 0;
+        //        int line_size = 0;
+        //        tw.Write("\t");
+        //        try
+        //        {
+        //            while (true)
+        //            {
+        //                b = br.ReadByte();
+        //                if (line_size == 32)
+        //                {
+        //                    tw.WriteLine();
+        //                    tw.Write("\t");
+        //                    line_size = 0;
+        //                }
+        //                string str = "0x" + String.Format("{0,0:x2}", b) + ", ";
+        //                total_size++;
+        //                line_size++;
+
+        //                tw.Write(str);
+        //            }
+        //        }
+        //        catch (EndOfStreamException) { };
+        //        tw.WriteLine("};");
+        //        tw.WriteLine("const int www_" + Path.GetFileName(file).Replace('.', '_') + "_length = " + total_size + ";");
+        //        tw.Close();
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        Console.WriteLine("exception while converting file: " + file);
+        //        Console.WriteLine("\t" + ex.Message);
+        //    }
+        //}
     }
 }
